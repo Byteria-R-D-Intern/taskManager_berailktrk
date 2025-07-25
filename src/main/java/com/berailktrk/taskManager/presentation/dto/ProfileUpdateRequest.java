@@ -1,16 +1,13 @@
 package com.berailktrk.taskManager.presentation.dto;
 
-import java.time.LocalDate;
-
 import lombok.Getter;
 import lombok.Setter;
+import java.time.LocalDate;
 
 @Getter
 @Setter
-public class RegisterRequest {
+public class ProfileUpdateRequest {
     private String address;
     private String phoneNumber;
     private LocalDate birthDate;
-    private String username;
-    private String password;
-}
+} 
