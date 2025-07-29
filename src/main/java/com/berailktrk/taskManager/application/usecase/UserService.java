@@ -103,4 +103,44 @@ public class UserService {
         }
         return false;
     }
+
+    public boolean deleteUser(Long currentUserId, Long targetUserId) {
+        // Kullanıcı kendisini silemesin
+        if (currentUserId.equals(targetUserId)) {
+            return false;
+        }
+        
+        // Hedef kullanıcıyı bul
+        Optional<User> targetUserOpt = userRepository.findById(targetUserId);
+        if (!targetUserOpt.isPresent()) {
+            return false;
+        }
+        
+        // Mevcut kullanıcıyı bul
+        Optional<User> currentUserOpt = userRepository.findById(currentUserId);
+        if (!currentUserOpt.isPresent()) {
+            return false;
+        }
+        
+        User currentUser = currentUserOpt.get();
+        User targetUser = targetUserOpt.get();
+        
+        // Sadece ADMIN başka kullanıcıları silebilir
+        if (!currentUser.getRole().equals(Role.ROLE_ADMIN)) {
+            return false;
+        }
+        
+        // Admin kendisini silemesin
+        if (currentUser.getRole().equals(Role.ROLE_ADMIN) && currentUserId.equals(targetUserId)) {
+            return false;
+        }
+        
+        // Kullanıcıyı sil
+        userRepository.delete(targetUser);
+        
+        // Kullanıcı detaylarını da sil
+        userDetailsRepository.findByUserId(targetUserId).ifPresent(userDetailsRepository::delete);
+        
+        return true;
+    }
 }

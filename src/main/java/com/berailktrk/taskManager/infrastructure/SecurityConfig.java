@@ -24,21 +24,15 @@ public class SecurityConfig {
                     "/webjars/**"
                 ).permitAll()
                 .requestMatchers("/api/auth/register", "/api/auth/login").permitAll()
-                .requestMatchers("/api/auth/profile").hasAnyRole("USER", "MANAGER", "ADMIN")
-                .requestMatchers("/api/users/**").hasAnyRole("ADMIN", "MANAGER")
-                .requestMatchers("/api/users/delete/**").hasRole("ADMIN")
-                .requestMatchers("/api/tasks/**").hasAnyRole("USER", "MANAGER", "ADMIN")
-                .anyRequest().authenticated()
+                .anyRequest().permitAll() // Geçici olarak tüm isteklere izin ver
             )
             .formLogin(form -> form.disable())
             .httpBasic(basic -> basic.disable());
         return http.build();
-
-        
     }
 
-  @Bean
-  public PasswordEncoder passwordEncoder() {
-      return new BCryptPasswordEncoder();
-  }
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
 }

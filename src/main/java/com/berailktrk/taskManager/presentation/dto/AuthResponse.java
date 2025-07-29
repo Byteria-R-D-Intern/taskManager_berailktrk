@@ -2,6 +2,8 @@ package com.berailktrk.taskManager.presentation.dto;
 
 import java.time.LocalDate;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
@@ -9,6 +11,7 @@ import lombok.Setter;
 @Getter
 @Setter
 @AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class AuthResponse {
     private String message;
     private String token;
@@ -26,5 +29,9 @@ public class AuthResponse {
         this.address = address;
         this.phoneNumber = phoneNumber;
         this.birthDate = birthDate;
+    }
+
+    public AuthResponse(String message) {
+        this.message = message;
     }
 }
