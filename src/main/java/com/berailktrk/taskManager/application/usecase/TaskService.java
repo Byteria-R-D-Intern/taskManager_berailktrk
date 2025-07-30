@@ -2,9 +2,14 @@ package com.berailktrk.taskManager.application.usecase;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import com.berailktrk.taskManager.domain.model.Role;
@@ -16,6 +21,8 @@ import com.berailktrk.taskManager.domain.repository.TaskRepository;
 import com.berailktrk.taskManager.domain.repository.UserRepository;
 import com.berailktrk.taskManager.presentation.dto.TaskRequest;
 import com.berailktrk.taskManager.presentation.dto.TaskResponse;
+import com.berailktrk.taskManager.presentation.dto.TaskSearchRequest;
+import com.berailktrk.taskManager.presentation.dto.TaskStatistics;
 
 @Service
 public class TaskService {
@@ -164,6 +171,100 @@ public class TaskService {
         }
         
         List<Task> tasks = taskRepository.findAll();
+        return tasks.stream()
+            .map(TaskResponse::new)
+            .collect(Collectors.toList());
+    }
+    
+    // ========== YENİ ARAMA VE FİLTRELEME METHODLARI ==========
+    
+    // Arama ve filtreleme methodu
+    public Page<TaskResponse> searchTasks(TaskSearchRequest searchRequest, Long currentUserId) {
+        User currentUser = userRepository.findById(currentUserId)
+            .orElseThrow(() -> new RuntimeException("Kullanıcı bulunamadı"));
+        
+        // Sıralama ayarları
+        Sort sort = Sort.by(
+            searchRequest.getSortDirection().equalsIgnoreCase("desc") ? Sort.Direction.DESC : Sort.Direction.ASC,
+            searchRequest.getSortBy() != null ? searchRequest.getSortBy() : "createdAt"
+        );
+        
+        Pageable pageable = PageRequest.of(searchRequest.getPage(), searchRequest.getSize(), sort);
+        
+        // Admin/Manager ise tüm görevleri, değilse sadece kendi görevlerini
+        Page<Task> tasks;
+        if (currentUser.getRole().equals(Role.ROLE_ADMIN) || 
+            currentUser.getRole().equals(Role.ROLE_MANAGER)) {
+            tasks = taskRepository.findAllTasksWithFilters(
+                searchRequest.getTitle(),
+                searchRequest.getStatus(),
+                searchRequest.getPriority(),
+                pageable
+            );
+        } else {
+            tasks = taskRepository.findTasksWithFilters(
+                searchRequest.getTitle(),
+                searchRequest.getStatus(),
+                searchRequest.getPriority(),
+                currentUserId,
+                pageable
+            );
+        }
+        
+        return tasks.map(TaskResponse::new);
+    }
+    
+    // Kullanıcının görevlerini sayfalama ile getirme
+    public Page<TaskResponse> getUserTasksPaginated(Long currentUserId, int page, int size) {
+        User currentUser = userRepository.findById(currentUserId)
+            .orElseThrow(() -> new RuntimeException("Kullanıcı bulunamadı"));
+        
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<Task> tasks = taskRepository.findByCreatedByIdOrAssignedToId(currentUserId, pageable);
+        
+        return tasks.map(TaskResponse::new);
+    }
+    
+    // Görev istatistikleri
+    public TaskStatistics getTaskStatistics(Long currentUserId) {
+        User currentUser = userRepository.findById(currentUserId)
+            .orElseThrow(() -> new RuntimeException("Kullanıcı bulunamadı"));
+        
+        List<Object[]> statusCounts = taskRepository.getTaskCountsByStatus(currentUserId);
+        List<Object[]> priorityCounts = taskRepository.getTaskCountsByPriority(currentUserId);
+        
+        Map<TaskStatus, Long> statusMap = statusCounts.stream()
+            .collect(Collectors.toMap(
+                row -> (TaskStatus) row[0],
+                row -> (Long) row[1]
+            ));
+        
+        Map<TaskPriority, Long> priorityMap = priorityCounts.stream()
+            .collect(Collectors.toMap(
+                row -> (TaskPriority) row[0],
+                row -> (Long) row[1]
+            ));
+        
+        return new TaskStatistics(statusMap, priorityMap);
+    }
+    
+    // Hızlı arama (sadece başlık ve açıklamada)
+    public List<TaskResponse> quickSearch(String searchTerm, Long currentUserId) {
+        User currentUser = userRepository.findById(currentUserId)
+            .orElseThrow(() -> new RuntimeException("Kullanıcı bulunamadı"));
+        
+        List<Task> tasks;
+        if (currentUser.getRole().equals(Role.ROLE_ADMIN) || 
+            currentUser.getRole().equals(Role.ROLE_MANAGER)) {
+            tasks = taskRepository.findByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase(
+                searchTerm
+            );
+        } else {
+            tasks = taskRepository.findByCreatedByOrAssignedToUserIdAndTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase(
+                currentUserId, searchTerm
+            );
+        }
+        
         return tasks.stream()
             .map(TaskResponse::new)
             .collect(Collectors.toList());

@@ -3,6 +3,7 @@ package com.berailktrk.taskManager.presentation.controller;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -12,12 +13,17 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.berailktrk.taskManager.application.usecase.TaskService;
+import com.berailktrk.taskManager.domain.model.TaskPriority;
+import com.berailktrk.taskManager.domain.model.TaskStatus;
 import com.berailktrk.taskManager.infrastructure.security.JwtProvider;
 import com.berailktrk.taskManager.presentation.dto.TaskRequest;
 import com.berailktrk.taskManager.presentation.dto.TaskResponse;
+import com.berailktrk.taskManager.presentation.dto.TaskSearchRequest;
+import com.berailktrk.taskManager.presentation.dto.TaskStatistics;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -267,6 +273,185 @@ public class TaskController {
             
         } catch (RuntimeException e) {
             return ResponseEntity.status(403).build();
+        } catch (Exception e) {
+            return ResponseEntity.status(500).build();
+        }
+    }
+    
+    // ========== YENİ ARAMA VE FİLTRELEME ENDPOINT'LERİ ==========
+    
+    @Operation(
+        summary = "Görev arama ve filtreleme",
+        description = "Görevleri başlık, durum, öncelik gibi kriterlere göre arar ve filtreler. " +
+                     "Admin/Manager tüm görevleri, diğer kullanıcılar sadece kendi görevlerini görebilir.",
+        security = @SecurityRequirement(name = "Bearer Authentication")
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Filtrelenmiş görev listesi"),
+        @ApiResponse(responseCode = "400", description = "Geçersiz filtre parametreleri"),
+        @ApiResponse(responseCode = "401", description = "Yetkisiz erişim"),
+        @ApiResponse(responseCode = "500", description = "Sunucu hatası")
+    })
+    @GetMapping("/search")
+    public ResponseEntity<Page<TaskResponse>> searchTasks(
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+        @RequestParam(required = false) String title,
+        @RequestParam(required = false) String status,
+        @RequestParam(required = false) String priority,
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "10") int size,
+        @RequestParam(defaultValue = "createdAt") String sortBy,
+        @RequestParam(defaultValue = "desc") String sortDirection
+    ) {
+        try {
+            if (authorizationHeader == null || authorizationHeader.trim().isEmpty()) {
+                return ResponseEntity.status(401).build();
+            }
+            
+            String token = extractToken(authorizationHeader);
+            if (!jwtProvider.validateToken(token)) {
+                return ResponseEntity.status(401).build();
+            }
+            
+            Long currentUserId = jwtProvider.getUserIdFromToken(token);
+            
+            // TaskSearchRequest oluştur
+            TaskSearchRequest searchRequest = new TaskSearchRequest();
+            searchRequest.setTitle(title);
+            
+            // Status enum'a çevir
+            if (status != null && !status.trim().isEmpty()) {
+                try {
+                    searchRequest.setStatus(TaskStatus.valueOf(status.toUpperCase()));
+                } catch (IllegalArgumentException e) {
+                    return ResponseEntity.badRequest().build();
+                }
+            }
+            
+            // Priority enum'a çevir
+            if (priority != null && !priority.trim().isEmpty()) {
+                try {
+                    searchRequest.setPriority(TaskPriority.valueOf(priority.toUpperCase()));
+                } catch (IllegalArgumentException e) {
+                    return ResponseEntity.badRequest().build();
+                }
+            }
+            
+            searchRequest.setPage(page);
+            searchRequest.setSize(size);
+            searchRequest.setSortBy(sortBy);
+            searchRequest.setSortDirection(sortDirection);
+            
+            Page<TaskResponse> tasks = taskService.searchTasks(searchRequest, currentUserId);
+            return ResponseEntity.ok(tasks);
+            
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            return ResponseEntity.status(500).build();
+        }
+    }
+    
+    @Operation(
+        summary = "Hızlı arama",
+        description = "Görev başlığı ve açıklamasında arama yapar.",
+        security = @SecurityRequirement(name = "Bearer Authentication")
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Arama sonuçları"),
+        @ApiResponse(responseCode = "401", description = "Yetkisiz erişim"),
+        @ApiResponse(responseCode = "500", description = "Sunucu hatası")
+    })
+    @GetMapping("/quick-search")
+    public ResponseEntity<List<TaskResponse>> quickSearch(
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+        @RequestParam String searchTerm
+    ) {
+        try {
+            if (authorizationHeader == null || authorizationHeader.trim().isEmpty()) {
+                return ResponseEntity.status(401).build();
+            }
+            
+            String token = extractToken(authorizationHeader);
+            if (!jwtProvider.validateToken(token)) {
+                return ResponseEntity.status(401).build();
+            }
+            
+            Long currentUserId = jwtProvider.getUserIdFromToken(token);
+            List<TaskResponse> tasks = taskService.quickSearch(searchTerm, currentUserId);
+            
+            return ResponseEntity.ok(tasks);
+            
+        } catch (Exception e) {
+            return ResponseEntity.status(500).build();
+        }
+    }
+    
+    @Operation(
+        summary = "Görev istatistikleri",
+        description = "Kullanıcının görevlerinin durum ve öncelik bazında istatistiklerini getirir.",
+        security = @SecurityRequirement(name = "Bearer Authentication")
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Görev istatistikleri"),
+        @ApiResponse(responseCode = "401", description = "Yetkisiz erişim"),
+        @ApiResponse(responseCode = "500", description = "Sunucu hatası")
+    })
+    @GetMapping("/statistics")
+    public ResponseEntity<TaskStatistics> getTaskStatistics(
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ) {
+        try {
+            if (authorizationHeader == null || authorizationHeader.trim().isEmpty()) {
+                return ResponseEntity.status(401).build();
+            }
+            
+            String token = extractToken(authorizationHeader);
+            if (!jwtProvider.validateToken(token)) {
+                return ResponseEntity.status(401).build();
+            }
+            
+            Long currentUserId = jwtProvider.getUserIdFromToken(token);
+            TaskStatistics statistics = taskService.getTaskStatistics(currentUserId);
+            
+            return ResponseEntity.ok(statistics);
+            
+        } catch (Exception e) {
+            return ResponseEntity.status(500).build();
+        }
+    }
+    
+    @Operation(
+        summary = "Kullanıcının görevlerini sayfalama ile getirme",
+        description = "Kullanıcının görevlerini sayfalama ile getirir.",
+        security = @SecurityRequirement(name = "Bearer Authentication")
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Görev listesi"),
+        @ApiResponse(responseCode = "401", description = "Yetkisiz erişim"),
+        @ApiResponse(responseCode = "500", description = "Sunucu hatası")
+    })
+    @GetMapping("/my-tasks-paginated")
+    public ResponseEntity<Page<TaskResponse>> getMyTasksPaginated(
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "10") int size
+    ) {
+        try {
+            if (authorizationHeader == null || authorizationHeader.trim().isEmpty()) {
+                return ResponseEntity.status(401).build();
+            }
+            
+            String token = extractToken(authorizationHeader);
+            if (!jwtProvider.validateToken(token)) {
+                return ResponseEntity.status(401).build();
+            }
+            
+            Long currentUserId = jwtProvider.getUserIdFromToken(token);
+            Page<TaskResponse> tasks = taskService.getUserTasksPaginated(currentUserId, page, size);
+            
+            return ResponseEntity.ok(tasks);
+            
         } catch (Exception e) {
             return ResponseEntity.status(500).build();
         }
