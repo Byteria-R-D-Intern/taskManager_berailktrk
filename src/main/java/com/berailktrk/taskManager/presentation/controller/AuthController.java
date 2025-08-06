@@ -160,8 +160,19 @@ public class AuthController {
                 return ResponseEntity.status(403).body("Bu işlemi yapma yetkiniz yok!");
             }
             
-            // Bu endpoint için UserService'e getAllUsers metodu eklenebilir
-            return ResponseEntity.ok("Kullanıcı listesi (bu özellik henüz implement edilmedi)");
+            // Tüm kullanıcıları getir
+            var users = userService.getAllUsers();
+            StringBuilder response = new StringBuilder();
+            response.append("Kullanıcı Listesi:\n");
+            
+            for (var user : users) {
+                response.append("ID: ").append(user.getId())
+                       .append(", Kullanıcı Adı: ").append(user.getUsername())
+                       .append(", Rol: ").append(user.getRole().name())
+                       .append("\n");
+            }
+            
+            return ResponseEntity.ok(response.toString());
             
         } catch (Exception e) {
             return ResponseEntity.status(500).body("Bir hata oluştu: " + e.getMessage());
@@ -181,14 +192,14 @@ public class AuthController {
     @PutMapping("/profile")
     public ResponseEntity<AuthResponse> updateProfile(
         @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
-        @RequestBody ProfileUpdateRequest request
+        @RequestBody ProfileUpdateRequest request,
+        @RequestParam(required = false) Long userId
     ) {
         try {
             // Token kontrolü
             if (authorizationHeader == null || authorizationHeader.trim().isEmpty()) {
                 return ResponseEntity.status(401).body(new AuthResponse(null, "Authorization header is missing", null, null, null, null));
             }
-            
             // Token'ı al (Bearer prefix'i varsa kaldır, yoksa direkt kullan)
             String token;
             if (authorizationHeader.startsWith("Bearer ")) {
@@ -196,21 +207,31 @@ public class AuthController {
             } else {
                 token = authorizationHeader.trim();
             }
-            
             if (!jwtProvider.validateToken(token)) {
                 return ResponseEntity.status(401).body(new AuthResponse(null, "Token is invalid or expired", null, null, null, null));
             }
-            
-            Long userId = jwtProvider.getUserIdFromToken(token);
-            
-            return userService.updateUserProfile(userId, request.getAddress(), request.getPhoneNumber(), request.getBirthDate())
-                .flatMap(details -> userService.findById(userId)
+            Long currentUserId = jwtProvider.getUserIdFromToken(token);
+            var currentUserOpt = userService.findById(currentUserId);
+            if (currentUserOpt.isEmpty()) {
+                return ResponseEntity.status(401).body(new AuthResponse(null, "User not found", null, null, null, null));
+            }
+            var currentUser = currentUserOpt.get();
+            Long targetUserId;
+            if (userId != null) {
+                if (!currentUser.getRole().name().equals("ROLE_ADMIN")) {
+                    return ResponseEntity.status(403).body(new AuthResponse(null, "Sadece admin başka bir kullanıcının profilini güncelleyebilir", null, null, null, null));
+                }
+                targetUserId = userId;
+            } else {
+                targetUserId = currentUserId;
+            }
+            return userService.updateUserProfile(targetUserId, request.getAddress(), request.getPhoneNumber(), request.getBirthDate())
+                .flatMap(details -> userService.findById(targetUserId)
                     .map(user -> ResponseEntity.ok(new AuthResponse(
                         user.getId(), user.getUsername(), user.getRole().name(),
                         details.getAddress(), details.getPhoneNumber(), details.getBirthDate()
                     )))
                 ).orElseGet(() -> ResponseEntity.status(404).body(new AuthResponse(null, "Kullanıcı bulunamadı veya güncellenemedi!", null, null, null, null)));
-                
         } catch (Exception e) {
             return ResponseEntity.status(500).body(new AuthResponse(null, "Bir hata oluştu: " + e.getMessage(), null, null, null, null));
         }

@@ -1,6 +1,7 @@
 package com.berailktrk.taskManager.application.usecase;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -142,5 +143,9 @@ public class UserService {
         userDetailsRepository.findByUserId(targetUserId).ifPresent(userDetailsRepository::delete);
         
         return true;
+    }
+
+    public List<User> getAllUsers() {
+        return userRepository.findAll();
     }
 }
