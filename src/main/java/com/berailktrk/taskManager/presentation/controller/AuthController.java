@@ -229,17 +229,28 @@ public class AuthController {
             if (!jwtProvider.validateToken(token)) {
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new AuthResponse(null, "Token is invalid or expired", null, null, null, null));
             }
-            
-            Long userId = jwtProvider.getUserIdFromToken(token);
-            
-            return userService.updateUserProfile(userId, request.getAddress(), request.getPhoneNumber(), request.getBirthDate())
-                .flatMap(details -> userService.findById(userId)
+            Long currentUserId = jwtProvider.getUserIdFromToken(token);
+            var currentUserOpt = userService.findById(currentUserId);
+            if (currentUserOpt.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new AuthResponse(null, "User not found", null, null, null, null));
+            }
+            var currentUser = currentUserOpt.get();
+            Long targetUserId;
+            if (userId != null) {
+                if (!currentUser.getRole().name().equals("ROLE_ADMIN")) {
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new AuthResponse(null, "Sadece admin başka bir kullanıcının profilini güncelleyebilir", null, null, null, null));
+                }
+                targetUserId = userId;
+            } else {
+                targetUserId = currentUserId;
+            }
+            return userService.updateUserProfile(targetUserId, request.getAddress(), request.getPhoneNumber(), request.getBirthDate())
+                .flatMap(details -> userService.findById(targetUserId)
                     .map(user -> ResponseEntity.ok(new AuthResponse(
                         user.getId(), user.getUsername(), user.getRole().name(),
                         details.getAddress(), details.getPhoneNumber(), details.getBirthDate()
                     )))
-                ).orElseGet(() -> ResponseEntity.status(404).body(new AuthResponse(null, "Kullanıcı bulunamadı veya güncellenemedi!", null, null, null, null)));
-                
+                ).orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(new AuthResponse(null, "Kullanıcı bulunamadı veya güncellenemedi!", null, null, null, null)));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new AuthResponse(null, "Bir hata oluştu: " + e.getMessage(), null, null, null, null));
         }
