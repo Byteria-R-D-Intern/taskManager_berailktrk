@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Manager - Kayıt Ol</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="css/style.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <div class="register-container">
+            <div class="register-header">
+                <h1><i class="fas fa-user-plus"></i> Kayıt Ol</h1>
+                <p>Task Manager'a hoş geldiniz! Hesabınızı oluşturun.</p>
+            </div>
+            
+            <div id="alert-container"></div>
+            
+            <form id="registerForm">
+                <div class="form-group">
+                  <label for="username" class="form-label">Kullanıcı Adı</label>
+                    <input type="text" class="form-control" id="username" name="username" required>
+                    <div class="form-text">Kullanıcı adınız benzersiz olmalıdır.</div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="password" class="form-label">Şifre</label>
+                    <input type="password" class="form-control" id="password" name="password" required>
+                    <div class="password-strength" id="passwordStrength"></div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="confirmPassword" class="form-label">Şifre Tekrar</label>
+                    <input type="password" class="form-control" id="confirmPassword" name="confirmPassword" required>
+                </div>
+                
+                <div class="form-group">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="termsCheck" required>
+                        <label class="form-check-label" for="termsCheck">
+                            <a href="#" data-bs-toggle="modal" data-bs-target="#termsModal">Kullanım şartlarını</a> kabul ediyorum.
+                        </label>
+                    </div>
+                </div>
+                
+                <button type="submit" class="btn btn-primary" id="registerBtn">
+                    <span class="btn-text">Kayıt Ol</span>
+                    <span class="loading">
+                        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                        Kayıt yapılıyor...
+                    </span>
+                </button>
+          </form>
+            
+            <div class="login-link">
+                <p>Zaten hesabınız var mı? <a href="login.html">Giriş yapın</a></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Terms Modal -->
+    <div class="modal fade" id="termsModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Kullanım Şartları</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <h6>Task Manager Kullanım Şartları</h6>
+                    <p>Bu uygulamayı kullanarak aşağıdaki şartları kabul etmiş sayılırsınız:</p>
+                    
+                    <ul>
+                        <li>Hesabınızın güvenliğinden siz sorumlusunuz</li>
+                        <li>Şifrenizi kimseyle paylaşmayın</li>
+                        <li>Uygulamayı kötüye kullanmayın</li>
+                        <li>Diğer kullanıcıların gizliliğine saygı gösterin</li>
+                        <li>Görevlerinizi düzenli olarak güncelleyin</li>
+                    </ul>
+                    
+                    <p><strong>Gizlilik:</strong> Kişisel bilgileriniz güvenli şekilde saklanır ve üçüncü taraflarla paylaşılmaz.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Kapat</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="js/register.js"></script>
+</body>
+</html>

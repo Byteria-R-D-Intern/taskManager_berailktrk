@@ -1,6 +1,7 @@
 package com.berailktrk.taskManager.application.usecase;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -11,6 +12,8 @@ import com.berailktrk.taskManager.domain.model.User;
 import com.berailktrk.taskManager.domain.model.UserDetails;
 import com.berailktrk.taskManager.domain.repository.UserDetailsRepository;
 import com.berailktrk.taskManager.domain.repository.UserRepository;
+import com.berailktrk.taskManager.presentation.dto.RegisterRequest;
+
 
 @Service
 public class UserService {
@@ -24,10 +27,26 @@ public class UserService {
         this.userDetailsRepository = userDetailsRepository;
     }
 
-    public User register(String username, String password, Role role) {
-        String encodedPassword = passwordEncoder.encode(password);
-        User user = new User(null, username, encodedPassword, role);
-        return userRepository.save(user);
+    public User register(RegisterRequest request) {
+        String encodedPassword = passwordEncoder.encode(request.getPassword());
+
+        // User nesnesi oluştur
+        User user = new User();
+        user.setUsername(request.getUsername());
+        user.setPassword(encodedPassword);
+        user.setRole(Role.ROLE_USER);
+
+        // UserDetails nesnesi oluştur
+        UserDetails userDetails = new UserDetails();
+        userDetails.setAddress(request.getAddress());
+        userDetails.setBirthDate(request.getBirthDate());
+        userDetails.setPhoneNumber(request.getPhoneNumber());
+
+        // Bağlantıyı kur
+        userDetails.setUser(user);
+        user.setUserDetails(userDetails); // Cascade.ALL sayesinde userDetails da kaydedilecek
+
+        return userRepository.save(user); // İki tabloya da kayıt yapılır
     }
     public Optional<User> authenticate(String username, String rawPassword) {
             Optional<User> userOpt = userRepository.findByUsername(username);
@@ -142,5 +161,9 @@ public class UserService {
         userDetailsRepository.findByUserId(targetUserId).ifPresent(userDetailsRepository::delete);
         
         return true;
+    }
+
+    public List<User> getAllUsers() {
+        return userRepository.findAll();
     }
 }

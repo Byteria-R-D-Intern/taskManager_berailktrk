@@ -20,9 +20,7 @@ import com.berailktrk.taskManager.domain.model.User;
 import com.berailktrk.taskManager.domain.repository.TaskRepository;
 import com.berailktrk.taskManager.domain.repository.UserRepository;
 import com.berailktrk.taskManager.presentation.dto.TaskRequest;
-import com.berailktrk.taskManager.presentation.dto.TaskResponse;
 import com.berailktrk.taskManager.presentation.dto.TaskSearchRequest;
-import com.berailktrk.taskManager.presentation.dto.TaskStatistics;
 
 @Service
 public class TaskService {
@@ -34,7 +32,7 @@ public class TaskService {
     private UserRepository userRepository;
     
     // Business Logic: Görev oluşturma
-    public TaskResponse createTask(TaskRequest request, Long currentUserId) {
+    public Task createTask(TaskRequest request, Long currentUserId) {
         // 1. Kullanıcı kontrolü
         User currentUser = userRepository.findById(currentUserId)
             .orElseThrow(() -> new RuntimeException("Kullanıcı bulunamadı"));
@@ -72,12 +70,11 @@ public class TaskService {
         task.setAssignedTo(assignedUser);
         task.setDueDate(request.getDueDate());
         
-        task = taskRepository.save(task);
-        return new TaskResponse(task);
+        return taskRepository.save(task);
     }
     
     // Business Logic: Görev güncelleme
-    public TaskResponse updateTask(Long taskId, TaskRequest request, Long currentUserId) {
+    public Task updateTask(Long taskId, TaskRequest request, Long currentUserId) {
         // 1. Görev kontrolü
         Task task = taskRepository.findById(taskId)
             .orElseThrow(() -> new RuntimeException("Görev bulunamadı"));
@@ -114,8 +111,7 @@ public class TaskService {
         if (request.getPriority() != null) task.setPriority(request.getPriority());
         if (request.getDueDate() != null) task.setDueDate(request.getDueDate());
         
-        task = taskRepository.save(task);
-        return new TaskResponse(task);
+        return taskRepository.save(task);
     }
     
     // Business Logic: Görev silme
@@ -135,139 +131,107 @@ public class TaskService {
     }
     
     // Business Logic: Görev detayı getirme
-    public TaskResponse getTaskById(Long taskId, Long currentUserId) {
+    public Task getTaskById(Long taskId, Long currentUserId) {
         // 1. Görev kontrolü
         Task task = taskRepository.findById(taskId)
             .orElseThrow(() -> new RuntimeException("Görev bulunamadı"));
         
-        // 2. Erişim kontrolü
+        // 2. Görüntüleme yetkisi kontrolü
         if (!canViewTask(task, currentUserId)) {
             throw new RuntimeException("Bu görevi görme yetkiniz yok");
         }
         
-        return new TaskResponse(task);
+        return task;
     }
     
     // Business Logic: Kullanıcının görevlerini listeleme
-    public List<TaskResponse> getUserTasks(Long currentUserId) {
-        User currentUser = userRepository.findById(currentUserId)
-            .orElseThrow(() -> new RuntimeException("Kullanıcı bulunamadı"));
-        
-        List<Task> tasks = taskRepository.findByCreatedByOrAssignedToUserId(currentUserId);
-        return tasks.stream()
-            .map(TaskResponse::new)
-            .collect(Collectors.toList());
+    public List<Task> getUserTasks(Long currentUserId) {
+        return taskRepository.findByCreatedByOrAssignedToUserId(currentUserId);
     }
     
-    // Business Logic: Tüm görevleri listeleme (ADMIN/MANAGER için)
-    public List<TaskResponse> getAllTasks(Long currentUserId) {
+    // Business Logic: Tüm görevleri listeleme (Admin/Manager)
+    public List<Task> getAllTasks(Long currentUserId) {
         User currentUser = userRepository.findById(currentUserId)
             .orElseThrow(() -> new RuntimeException("Kullanıcı bulunamadı"));
         
-        // Yetki kontrolü
+        // Sadece ADMIN ve MANAGER tüm görevleri görebilir
         if (!currentUser.getRole().equals(Role.ROLE_ADMIN) && 
             !currentUser.getRole().equals(Role.ROLE_MANAGER)) {
             throw new RuntimeException("Tüm görevleri görme yetkiniz yok");
         }
         
-        List<Task> tasks = taskRepository.findAll();
-        return tasks.stream()
-            .map(TaskResponse::new)
-            .collect(Collectors.toList());
+        return taskRepository.findAll();
     }
     
-    // ========== YENİ ARAMA VE FİLTRELEME METHODLARI ==========
-    
-    // Arama ve filtreleme methodu
-    public Page<TaskResponse> searchTasks(TaskSearchRequest searchRequest, Long currentUserId) {
+    // Business Logic: Görev arama ve filtreleme
+    public Page<Task> searchTasks(TaskSearchRequest searchRequest, Long currentUserId) {
         User currentUser = userRepository.findById(currentUserId)
             .orElseThrow(() -> new RuntimeException("Kullanıcı bulunamadı"));
         
-        // Sıralama ayarları
-        Sort sort = Sort.by(
-            searchRequest.getSortDirection().equalsIgnoreCase("desc") ? Sort.Direction.DESC : Sort.Direction.ASC,
-            searchRequest.getSortBy() != null ? searchRequest.getSortBy() : "createdAt"
-        );
-        
+        // Sayfalama ve sıralama ayarları
+        Sort sort = Sort.by(Sort.Direction.fromString(searchRequest.getSortDirection()), searchRequest.getSortBy());
         Pageable pageable = PageRequest.of(searchRequest.getPage(), searchRequest.getSize(), sort);
         
-        // Admin/Manager ise tüm görevleri, değilse sadece kendi görevlerini
         Page<Task> tasks;
-        if (currentUser.getRole().equals(Role.ROLE_ADMIN) || 
-            currentUser.getRole().equals(Role.ROLE_MANAGER)) {
+        
+        // Admin/Manager tüm görevleri görebilir, diğer kullanıcılar sadece kendi görevlerini
+        if (currentUser.getRole().equals(Role.ROLE_ADMIN) || currentUser.getRole().equals(Role.ROLE_MANAGER)) {
             tasks = taskRepository.findAllTasksWithFilters(
-                searchRequest.getTitle(),
-                searchRequest.getStatus(),
-                searchRequest.getPriority(),
+                searchRequest.getTitle(), 
+                searchRequest.getStatus(), 
+                searchRequest.getPriority(), 
                 pageable
             );
         } else {
             tasks = taskRepository.findTasksWithFilters(
-                searchRequest.getTitle(),
-                searchRequest.getStatus(),
-                searchRequest.getPriority(),
+                searchRequest.getTitle(), 
+                searchRequest.getStatus(), 
+                searchRequest.getPriority(), 
                 currentUserId,
                 pageable
             );
         }
         
-        return tasks.map(TaskResponse::new);
+        return tasks;
     }
     
-    // Kullanıcının görevlerini sayfalama ile getirme
-    public Page<TaskResponse> getUserTasksPaginated(Long currentUserId, int page, int size) {
-        User currentUser = userRepository.findById(currentUserId)
-            .orElseThrow(() -> new RuntimeException("Kullanıcı bulunamadı"));
-        
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<Task> tasks = taskRepository.findByCreatedByIdOrAssignedToId(currentUserId, pageable);
-        
-        return tasks.map(TaskResponse::new);
+    // Business Logic: Kullanıcının görevlerini sayfalama ile getirme
+    public Page<Task> getUserTasksPaginated(Long currentUserId, int page, int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        return taskRepository.findByCreatedByIdOrAssignedToId(currentUserId, pageable);
     }
     
-    // Görev istatistikleri
-    public TaskStatistics getTaskStatistics(Long currentUserId) {
-        User currentUser = userRepository.findById(currentUserId)
-            .orElseThrow(() -> new RuntimeException("Kullanıcı bulunamadı"));
+    // Business Logic: Görev istatistikleri
+    public Map<String, Object> getTaskStatistics(Long currentUserId) {
+        List<Task> tasks = getUserTasks(currentUserId);
         
-        List<Object[]> statusCounts = taskRepository.getTaskCountsByStatus(currentUserId);
-        List<Object[]> priorityCounts = taskRepository.getTaskCountsByPriority(currentUserId);
+        // Durum bazında sayım
+        Map<TaskStatus, Long> statusMap = tasks.stream()
+            .collect(Collectors.groupingBy(Task::getStatus, Collectors.counting()));
         
-        Map<TaskStatus, Long> statusMap = statusCounts.stream()
-            .collect(Collectors.toMap(
-                row -> (TaskStatus) row[0],
-                row -> (Long) row[1]
-            ));
+        // Öncelik bazında sayım
+        Map<TaskPriority, Long> priorityMap = tasks.stream()
+            .collect(Collectors.groupingBy(Task::getPriority, Collectors.counting()));
         
-        Map<TaskPriority, Long> priorityMap = priorityCounts.stream()
-            .collect(Collectors.toMap(
-                row -> (TaskPriority) row[0],
-                row -> (Long) row[1]
-            ));
-        
-        return new TaskStatistics(statusMap, priorityMap);
+        return Map.of("statusCounts", statusMap, "priorityCounts", priorityMap);
     }
     
-    // Hızlı arama (sadece başlık ve açıklamada)
-    public List<TaskResponse> quickSearch(String searchTerm, Long currentUserId) {
+    // Business Logic: Hızlı arama
+    public List<Task> quickSearch(String searchTerm, Long currentUserId) {
         User currentUser = userRepository.findById(currentUserId)
             .orElseThrow(() -> new RuntimeException("Kullanıcı bulunamadı"));
         
         List<Task> tasks;
-        if (currentUser.getRole().equals(Role.ROLE_ADMIN) || 
-            currentUser.getRole().equals(Role.ROLE_MANAGER)) {
-            tasks = taskRepository.findByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase(
-                searchTerm
-            );
+        
+        // Admin/Manager tüm görevlerde arama yapabilir
+        if (currentUser.getRole().equals(Role.ROLE_ADMIN) || currentUser.getRole().equals(Role.ROLE_MANAGER)) {
+            tasks = taskRepository.findByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase(searchTerm);
         } else {
-            tasks = taskRepository.findByCreatedByOrAssignedToUserIdAndTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase(
-                currentUserId, searchTerm
-            );
+            // Diğer kullanıcılar sadece kendi görevlerinde arama yapabilir
+            tasks = taskRepository.findByCreatedByOrAssignedToUserIdAndTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase(currentUserId, searchTerm);
         }
         
-        return tasks.stream()
-            .map(TaskResponse::new)
-            .collect(Collectors.toList());
+        return tasks;
     }
     
     // Helper Methods - Business Logic Rules

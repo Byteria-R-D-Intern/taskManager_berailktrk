@@ -1,9 +1,13 @@
 package com.berailktrk.taskManager.presentation.controller;
 
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.domain.Page;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.berailktrk.taskManager.application.usecase.TaskService;
+import com.berailktrk.taskManager.domain.model.Task;
 import com.berailktrk.taskManager.domain.model.TaskPriority;
 import com.berailktrk.taskManager.domain.model.TaskStatus;
 import com.berailktrk.taskManager.infrastructure.security.JwtProvider;
@@ -62,22 +67,42 @@ public class TaskController {
         try {
             // Token kontrolü
             if (authorizationHeader == null || authorizationHeader.trim().isEmpty()) {
-                return ResponseEntity.status(401).body("Authorization header is missing");
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Authorization header is missing");
             }
             
             String token = extractToken(authorizationHeader);
             if (!jwtProvider.validateToken(token)) {
-                return ResponseEntity.status(401).body("Token is invalid or expired");
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Token is invalid or expired");
             }
             
             Long currentUserId = jwtProvider.getUserIdFromToken(token);
-            TaskResponse response = taskService.createTask(request, currentUserId);
+            Task task = taskService.createTask(request, currentUserId);
+            TaskResponse response = new TaskResponse(task);
             return ResponseEntity.ok(response);
             
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body("Hata: " + e.getMessage());
+            String message = e.getMessage();
+            
+            // Validation hataları
+            if (message.contains("boş olamaz") || message.contains("uzun olamaz") || 
+                message.contains("geçmiş bir tarih")) {
+                return ResponseEntity.badRequest().body("Validation Error: " + message);
+            }
+            
+            // Yetki hataları
+            if (message.contains("yetkiniz yok") || message.contains("yapamazsınız")) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Permission Error: " + message);
+            }
+            
+            // Bulunamadı hataları
+            if (message.contains("bulunamadı")) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Not Found: " + message);
+            }
+            
+            // Genel hata
+            return ResponseEntity.badRequest().body("Error: " + message);
         } catch (Exception e) {
-            return ResponseEntity.status(500).body("Sunucu hatası: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Server Error: " + e.getMessage());
         }
     }
     
@@ -103,22 +128,42 @@ public class TaskController {
         try {
             // Token kontrolü
             if (authorizationHeader == null || authorizationHeader.trim().isEmpty()) {
-                return ResponseEntity.status(401).body("Authorization header is missing");
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Authorization header is missing");
             }
             
             String token = extractToken(authorizationHeader);
             if (!jwtProvider.validateToken(token)) {
-                return ResponseEntity.status(401).body("Token is invalid or expired");
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Token is invalid or expired");
             }
             
             Long currentUserId = jwtProvider.getUserIdFromToken(token);
-            TaskResponse response = taskService.updateTask(taskId, request, currentUserId);
+            Task task = taskService.updateTask(taskId, request, currentUserId);
+            TaskResponse response = new TaskResponse(task);
             return ResponseEntity.ok(response);
             
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body("Hata: " + e.getMessage());
+            String message = e.getMessage();
+            
+            // Validation hataları
+            if (message.contains("boş olamaz") || message.contains("uzun olamaz") || 
+                message.contains("geçmiş bir tarih")) {
+                return ResponseEntity.badRequest().body("Validation Error: " + message);
+            }
+            
+            // Yetki hataları
+            if (message.contains("yetkiniz yok") || message.contains("yapamazsınız")) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Permission Error: " + message);
+            }
+            
+            // Bulunamadı hataları
+            if (message.contains("bulunamadı")) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Not Found: " + message);
+            }
+            
+            // Genel hata
+            return ResponseEntity.badRequest().body("Error: " + message);
         } catch (Exception e) {
-            return ResponseEntity.status(500).body("Sunucu hatası: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Server Error: " + e.getMessage());
         }
     }
     
@@ -143,12 +188,12 @@ public class TaskController {
         try {
             // Token kontrolü
             if (authorizationHeader == null || authorizationHeader.trim().isEmpty()) {
-                return ResponseEntity.status(401).body("Authorization header is missing");
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Authorization header is missing");
             }
             
             String token = extractToken(authorizationHeader);
             if (!jwtProvider.validateToken(token)) {
-                return ResponseEntity.status(401).body("Token is invalid or expired");
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Token is invalid or expired");
             }
             
             Long currentUserId = jwtProvider.getUserIdFromToken(token);
@@ -161,9 +206,22 @@ public class TaskController {
             }
             
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            String message = e.getMessage();
+            
+            // Yetki hataları
+            if (message.contains("yetkiniz yok")) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Permission Error: " + message);
+            }
+            
+            // Bulunamadı hataları
+            if (message.contains("bulunamadı")) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Not Found: " + message);
+            }
+            
+            // Genel hata
+            return ResponseEntity.badRequest().body("Error: " + message);
         } catch (Exception e) {
-            return ResponseEntity.status(500).body("Bir hata oluştu: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Server Error: " + e.getMessage());
         }
     }
     
@@ -188,22 +246,36 @@ public class TaskController {
         try {
             // Token kontrolü
             if (authorizationHeader == null || authorizationHeader.trim().isEmpty()) {
-                return ResponseEntity.status(401).body("Authorization header is missing");
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Authorization header is missing");
             }
             
             String token = extractToken(authorizationHeader);
             if (!jwtProvider.validateToken(token)) {
-                return ResponseEntity.status(401).body("Token is invalid or expired");
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Token is invalid or expired");
             }
             
             Long currentUserId = jwtProvider.getUserIdFromToken(token);
-            TaskResponse response = taskService.getTaskById(taskId, currentUserId);
+            Task task = taskService.getTaskById(taskId, currentUserId);
+            TaskResponse response = new TaskResponse(task);
             return ResponseEntity.ok(response);
             
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body("Hata: " + e.getMessage());
+            String message = e.getMessage();
+            
+            // Yetki hataları
+            if (message.contains("yetkiniz yok")) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Permission Error: " + message);
+            }
+            
+            // Bulunamadı hataları
+            if (message.contains("bulunamadı")) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Not Found: " + message);
+            }
+            
+            // Genel hata
+            return ResponseEntity.badRequest().body("Error: " + message);
         } catch (Exception e) {
-            return ResponseEntity.status(500).body("Sunucu hatası: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Server Error: " + e.getMessage());
         }
     }
     
@@ -224,20 +296,32 @@ public class TaskController {
         try {
             // Token kontrolü
             if (authorizationHeader == null || authorizationHeader.trim().isEmpty()) {
-                return ResponseEntity.status(401).build();
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
             }
             
             String token = extractToken(authorizationHeader);
             if (!jwtProvider.validateToken(token)) {
-                return ResponseEntity.status(401).build();
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
             }
             
             Long currentUserId = jwtProvider.getUserIdFromToken(token);
-            List<TaskResponse> tasks = taskService.getUserTasks(currentUserId);
-            return ResponseEntity.ok(tasks);
+            List<Task> tasks = taskService.getUserTasks(currentUserId);
+            List<TaskResponse> responses = tasks.stream()
+                .map(TaskResponse::new)
+                .collect(Collectors.toList());
+            return ResponseEntity.ok(responses);
             
+        } catch (RuntimeException e) {
+            String message = e.getMessage();
+            
+            // Bulunamadı hataları
+            if (message.contains("bulunamadı")) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+            }
+            
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         } catch (Exception e) {
-            return ResponseEntity.status(500).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
     
@@ -253,28 +337,44 @@ public class TaskController {
         @ApiResponse(responseCode = "500", description = "Sunucu hatası")
     })
     @GetMapping
-    public ResponseEntity<List<TaskResponse>> getAllTasks(
+    public ResponseEntity<?> getAllTasks(
         @RequestHeader(value = "Authorization", required = false) String authorizationHeader
     ) {
         try {
             // Token kontrolü
             if (authorizationHeader == null || authorizationHeader.trim().isEmpty()) {
-                return ResponseEntity.status(401).build();
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Authorization header is missing");
             }
             
             String token = extractToken(authorizationHeader);
             if (!jwtProvider.validateToken(token)) {
-                return ResponseEntity.status(401).build();
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Token is invalid or expired");
             }
             
             Long currentUserId = jwtProvider.getUserIdFromToken(token);
-            List<TaskResponse> tasks = taskService.getAllTasks(currentUserId);
-            return ResponseEntity.ok(tasks);
+            List<Task> tasks = taskService.getAllTasks(currentUserId);
+            List<TaskResponse> responses = tasks.stream()
+                .map(TaskResponse::new)
+                .collect(Collectors.toList());
+            return ResponseEntity.ok(responses);
             
         } catch (RuntimeException e) {
-            return ResponseEntity.status(403).build();
+            String message = e.getMessage();
+            
+            // Yetki hataları
+            if (message.contains("yetkiniz yok")) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Permission Error: " + message);
+            }
+            
+            // Bulunamadı hataları
+            if (message.contains("bulunamadı")) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Not Found: " + message);
+            }
+            
+            // Genel hata
+            return ResponseEntity.badRequest().body("Error: " + message);
         } catch (Exception e) {
-            return ResponseEntity.status(500).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Server Error: " + e.getMessage());
         }
     }
     
@@ -293,7 +393,7 @@ public class TaskController {
         @ApiResponse(responseCode = "500", description = "Sunucu hatası")
     })
     @GetMapping("/search")
-    public ResponseEntity<Page<TaskResponse>> searchTasks(
+    public ResponseEntity<?> searchTasks(
         @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
         @RequestParam(required = false) String title,
         @RequestParam(required = false) String status,
@@ -305,12 +405,12 @@ public class TaskController {
     ) {
         try {
             if (authorizationHeader == null || authorizationHeader.trim().isEmpty()) {
-                return ResponseEntity.status(401).build();
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
             }
             
             String token = extractToken(authorizationHeader);
             if (!jwtProvider.validateToken(token)) {
-                return ResponseEntity.status(401).build();
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
             }
             
             Long currentUserId = jwtProvider.getUserIdFromToken(token);
@@ -342,13 +442,30 @@ public class TaskController {
             searchRequest.setSortBy(sortBy);
             searchRequest.setSortDirection(sortDirection);
             
-            Page<TaskResponse> tasks = taskService.searchTasks(searchRequest, currentUserId);
-            return ResponseEntity.ok(tasks);
+            Page<Task> tasks = taskService.searchTasks(searchRequest, currentUserId);
+            Page<TaskResponse> responses = tasks.map(TaskResponse::new);
+            return ResponseEntity.ok(responses);
             
+        } catch (DataAccessException e) {
+            // Database hataları
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Database Error: " + e.getMessage());
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().build();
+            String message = e.getMessage();
+            
+            // Bulunamadı hataları
+            if (message.contains("bulunamadı")) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Not Found: " + message);
+            }
+            
+            // Yetki hataları
+            if (message.contains("yetkiniz yok")) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Permission Error: " + message);
+            }
+            
+            // Genel hata
+            return ResponseEntity.badRequest().body("Error: " + message);
         } catch (Exception e) {
-            return ResponseEntity.status(500).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Server Error: " + e.getMessage());
         }
     }
     
@@ -369,21 +486,24 @@ public class TaskController {
     ) {
         try {
             if (authorizationHeader == null || authorizationHeader.trim().isEmpty()) {
-                return ResponseEntity.status(401).build();
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
             }
             
             String token = extractToken(authorizationHeader);
             if (!jwtProvider.validateToken(token)) {
-                return ResponseEntity.status(401).build();
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
             }
             
             Long currentUserId = jwtProvider.getUserIdFromToken(token);
-            List<TaskResponse> tasks = taskService.quickSearch(searchTerm, currentUserId);
+            List<Task> tasks = taskService.quickSearch(searchTerm, currentUserId);
+            List<TaskResponse> responses = tasks.stream()
+                .map(TaskResponse::new)
+                .collect(Collectors.toList());
             
-            return ResponseEntity.ok(tasks);
+            return ResponseEntity.ok(responses);
             
         } catch (Exception e) {
-            return ResponseEntity.status(500).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
     
@@ -403,21 +523,27 @@ public class TaskController {
     ) {
         try {
             if (authorizationHeader == null || authorizationHeader.trim().isEmpty()) {
-                return ResponseEntity.status(401).build();
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
             }
             
             String token = extractToken(authorizationHeader);
             if (!jwtProvider.validateToken(token)) {
-                return ResponseEntity.status(401).build();
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
             }
             
             Long currentUserId = jwtProvider.getUserIdFromToken(token);
-            TaskStatistics statistics = taskService.getTaskStatistics(currentUserId);
+            Map<String, Object> statisticsData = taskService.getTaskStatistics(currentUserId);
             
+            @SuppressWarnings("unchecked")
+            Map<TaskStatus, Long> statusCounts = (Map<TaskStatus, Long>) statisticsData.get("statusCounts");
+            @SuppressWarnings("unchecked")
+            Map<TaskPriority, Long> priorityCounts = (Map<TaskPriority, Long>) statisticsData.get("priorityCounts");
+            
+            TaskStatistics statistics = new TaskStatistics(statusCounts, priorityCounts);
             return ResponseEntity.ok(statistics);
             
         } catch (Exception e) {
-            return ResponseEntity.status(500).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
     
@@ -439,21 +565,22 @@ public class TaskController {
     ) {
         try {
             if (authorizationHeader == null || authorizationHeader.trim().isEmpty()) {
-                return ResponseEntity.status(401).build();
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
             }
             
             String token = extractToken(authorizationHeader);
             if (!jwtProvider.validateToken(token)) {
-                return ResponseEntity.status(401).build();
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
             }
             
             Long currentUserId = jwtProvider.getUserIdFromToken(token);
-            Page<TaskResponse> tasks = taskService.getUserTasksPaginated(currentUserId, page, size);
+            Page<Task> tasks = taskService.getUserTasksPaginated(currentUserId, page, size);
+            Page<TaskResponse> responses = tasks.map(TaskResponse::new);
             
-            return ResponseEntity.ok(tasks);
+            return ResponseEntity.ok(responses);
             
         } catch (Exception e) {
-            return ResponseEntity.status(500).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
     
